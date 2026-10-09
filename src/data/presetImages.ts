@@ -1,4 +1,8 @@
 import { PuzzleImage } from '../types';
+import puppyImg from '../assets/images/puzzle_puppy_1791556547499.jpg';
+import fireTruckImg from '../assets/images/puzzle_firetruck_1791556560862.jpg';
+import babyDinoImg from '../assets/images/puzzle_baby_dino_1791556572717.jpg';
+import fruitsImg from '../assets/images/puzzle_fruits_1791556584145.jpg';
 
 export const PRESET_IMAGES: PuzzleImage[] = [
   {
@@ -6,28 +10,28 @@ export const PRESET_IMAGES: PuzzleImage[] = [
     title: 'Chú Cún Con Vui Vẻ',
     titleEn: 'Happy Puppy in the Meadow',
     category: 'animals',
-    src: '/src/assets/images/puzzle_puppy_1791556547499.jpg',
+    src: puppyImg,
   },
   {
     id: 'fire-truck',
     title: 'Xe Cứu Hỏa Tí Hon',
     titleEn: 'Friendly Fire Truck',
     category: 'vehicles',
-    src: '/src/assets/images/puzzle_firetruck_1791556560862.jpg',
+    src: fireTruckImg,
   },
   {
     id: 'baby-dino',
     title: 'Khủng Long Nhí Nở Trứng',
     titleEn: 'Baby Dino Hatching',
     category: 'dino',
-    src: '/src/assets/images/puzzle_baby_dino_1791556572717.jpg',
+    src: babyDinoImg,
   },
   {
     id: 'smiling-fruits',
     title: 'Bữa Tiệc Trái Cây',
     titleEn: 'Smiling Fruit Friends',
     category: 'fruits',
-    src: '/src/assets/images/puzzle_fruits_1791556584145.jpg',
+    src: fruitsImg,
   },
   {
     id: 'yellow-school-bus',
