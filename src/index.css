@@ -1,0 +1,92 @@
+@import "tailwindcss";
+
+@keyframes puzzleAlive {
+  0%, 100% {
+    transform: scale(1.01) translateY(0) rotate(0deg);
+    filter: drop-shadow(0 15px 25px rgba(245, 158, 11, 0.35));
+  }
+  25% {
+    transform: scale(1.025) translateY(-5px) rotate(0.7deg);
+    filter: drop-shadow(0 20px 35px rgba(245, 158, 11, 0.5)) drop-shadow(0 0 25px rgba(236, 72, 153, 0.3));
+  }
+  50% {
+    transform: scale(1.03) translateY(-7px) rotate(0deg);
+    filter: drop-shadow(0 22px 40px rgba(245, 158, 11, 0.6)) drop-shadow(0 0 35px rgba(59, 130, 246, 0.35));
+  }
+  75% {
+    transform: scale(1.025) translateY(-5px) rotate(-0.7deg);
+    filter: drop-shadow(0 20px 35px rgba(245, 158, 11, 0.5)) drop-shadow(0 0 25px rgba(16, 185, 129, 0.3));
+  }
+}
+
+@keyframes shimmerSweep {
+  0% {
+    transform: translateX(-150%) skewX(-20deg);
+    opacity: 0;
+  }
+  30% {
+    opacity: 0.6;
+  }
+  60% {
+    opacity: 0.6;
+  }
+  100% {
+    transform: translateX(250%) skewX(-20deg);
+    opacity: 0;
+  }
+}
+
+@keyframes balloonRise {
+  0% {
+    transform: translateY(110vh) translateX(0) scale(0.85);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  50% {
+    transform: translateY(50vh) translateX(25px) scale(1);
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-20vh) translateX(-20px) scale(1.05);
+    opacity: 0;
+  }
+}
+
+@keyframes starOrbit {
+  0% {
+    transform: rotate(0deg) translateX(40px) rotate(0deg) scale(0.8);
+    opacity: 0.6;
+  }
+  50% {
+    transform: rotate(180deg) translateX(45px) rotate(-180deg) scale(1.2);
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(360deg) translateX(40px) rotate(-360deg) scale(0.8);
+    opacity: 0.6;
+  }
+}
+
+@keyframes wobbleTouch {
+  0%, 100% { transform: scale(1) rotate(0deg); }
+  20% { transform: scale(1.08, 0.92) rotate(-3deg); }
+  40% { transform: scale(0.95, 1.05) rotate(3deg); }
+  60% { transform: scale(1.04, 0.96) rotate(-1.5deg); }
+  80% { transform: scale(0.98, 1.02) rotate(1deg); }
+}
+
+.animate-puzzle-alive {
+  animation: puzzleAlive 3.5s ease-in-out infinite;
+}
+
+.animate-shimmer-sweep {
+  animation: shimmerSweep 3s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.animate-wobble-touch {
+  animation: wobbleTouch 0.6s cubic-bezier(0.25, 1, 0.5, 1);
+}

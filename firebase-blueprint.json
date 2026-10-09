@@ -1,0 +1,60 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "displayName": { "type": "string", "maxLength": 100 },
+        "photoURL": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "createdAt"]
+    },
+    "CustomPuzzle": {
+      "title": "CustomPuzzle",
+      "description": "Custom puzzles created by the user or family",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string", "maxLength": 100 },
+        "src": { "type": "string", "maxLength": 1000000 },
+        "category": { "type": "string", "maxLength": 50 },
+        "userId": { "type": "string" },
+        "pieceCount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "src", "userId", "createdAt"]
+    },
+    "PuzzleScore": {
+      "title": "PuzzleScore",
+      "description": "Kid puzzle completion score records and achievements",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "puzzleId": { "type": "string" },
+        "userId": { "type": "string" },
+        "completionTime": { "type": "number" },
+        "pieceCount": { "type": "number" },
+        "stars": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "puzzleId", "userId", "completionTime", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profile documents"
+    },
+    "/puzzles/{puzzleId}": {
+      "schema": { "$ref": "#/entities/CustomPuzzle" },
+      "description": "User custom puzzles"
+    },
+    "/users/{userId}/scores/{scoreId}": {
+      "schema": { "$ref": "#/entities/PuzzleScore" },
+      "description": "Subcollection of scores for a user"
+    }
+  }
+}

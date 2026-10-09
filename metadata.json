@@ -1,0 +1,6 @@
+{
+  "name": "Bé Ghép Tranh - Jigsaw Puzzle Cho Bé Mầm Non",
+  "description": "Trò chơi ghép hình vui nhộn từ 2 mảnh ghép dành cho trẻ mầm non, hỗ trợ chạm và kéo thả, tự tải ảnh và tạo tranh ghép.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
