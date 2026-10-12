@@ -14,6 +14,61 @@ interface ImageResult {
   source: string;
 }
 
+// Search web images via Bing (high relevance for Vietnamese and kids terms)
+async function searchBingImages(query: string): Promise<ImageResult[]> {
+  try {
+    const searchUrl = `https://www.bing.com/images/search?q=${encodeURIComponent(
+      query
+    )}&FORM=HDRSC2`;
+    const res = await fetch(searchUrl, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept-Language': 'vi,en;q=0.9',
+      },
+    });
+
+    if (!res.ok) return [];
+    const html = await res.text();
+    const regex = /class="iusc"[^>]*m="([^"]+)"/g;
+    let match: RegExpExecArray | null;
+    const items: ImageResult[] = [];
+
+    while ((match = regex.exec(html)) !== null && items.length < 28) {
+      try {
+        const raw = match[1].replace(/&quot;/g, '"');
+        const json = JSON.parse(raw) as {
+          murl?: string;
+          turl?: string;
+          t?: string;
+          desc?: string;
+        };
+
+        if (json.murl && json.turl && json.murl.startsWith('http')) {
+          const cleanTitle = (json.t || json.desc || query)
+            .replace(/[\uE000-\uF8FF]/g, '') // remove Bing highlight markers
+            .trim();
+
+          items.push({
+            id: `bing-${items.length}-${Date.now()}`,
+            title: cleanTitle || query,
+            url: json.murl,
+            thumbUrl: json.turl.replace(/&amp;/g, '&'),
+            source: 'Google / Web',
+          });
+        }
+      } catch {
+        // Skip malformed item
+      }
+    }
+
+    return items;
+  } catch (err) {
+    console.error('Error searching Bing:', err);
+    return [];
+  }
+}
+
 // Search web images via DuckDuckGo
 async function searchDuckDuckGo(query: string): Promise<ImageResult[]> {
   try {
@@ -102,10 +157,16 @@ async function startServer() {
     }
 
     try {
-      // Try web search first
-      let results = await searchDuckDuckGo(q);
+      // 1. Try Bing Images search first (most accurate for Vietnamese kid keywords)
+      let results = await searchBingImages(q);
 
-      // If empty or few results, also add Wikimedia results
+      // 2. If Bing returned few results, try DuckDuckGo
+      if (results.length < 8) {
+        const ddgResults = await searchDuckDuckGo(q);
+        results = [...results, ...ddgResults];
+      }
+
+      // 3. If still few results, try Wikimedia with kid-friendly query
       if (results.length < 8) {
         const wikiResults = await searchWikimedia(q);
         results = [...results, ...wikiResults];

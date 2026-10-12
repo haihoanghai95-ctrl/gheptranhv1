@@ -29,6 +29,7 @@ interface SearchResult {
 }
 
 const POPULAR_SEARCHES = [
+  'Con cá vàng',
   'Chú mèo con',
   'Chó cún dễ thương',
   'Xe cảnh sát',
@@ -44,12 +45,16 @@ const POPULAR_SEARCHES = [
 ];
 
 const VI_TO_EN_KEYWORDS: Record<string, string> = {
-  'mèo': 'cute cartoon cat',
+  'con cá vàng': 'cute goldfish cartoon swimming',
+  'cá vàng': 'cute goldfish cartoon swimming',
+  'bể cá': 'aquarium fish cartoon',
+  'cá cảnh': 'colorful goldfish cartoon',
   'mèo con': 'cute kitten cartoon',
-  'chó': 'cute cartoon puppy dog',
   'chó con': 'cute cartoon puppy',
-  'cún': 'cute puppy cartoon',
   'cún con': 'cute puppy cartoon',
+  'mèo': 'cute cartoon cat',
+  'chó': 'cute cartoon puppy dog',
+  'cún': 'cute puppy cartoon',
   'xe cảnh sát': 'cartoon police car',
   'xe cứu hỏa': 'cartoon fire truck',
   'khủng long': 'cute cartoon dinosaur',
@@ -71,6 +76,11 @@ const VI_TO_EN_KEYWORDS: Record<string, string> = {
   'hổ': 'cute cartoon tiger',
   'ngựa': 'cute cartoon pony horse',
   'cá': 'cute cartoon fish',
+  'vịt': 'cute cartoon duck',
+  'chim': 'cute cartoon bird',
+  'bướm': 'cute cartoon butterfly',
+  'hoa': 'colorful cartoon flowers',
+  'ong': 'cute cartoon bee',
   'siêu nhân': 'cartoon superhero',
 };
 
@@ -78,8 +88,12 @@ function getSearchTerms(rawQuery: string): string[] {
   const qLower = rawQuery.trim().toLowerCase();
   const terms: string[] = [rawQuery.trim()];
 
-  // Check dictionary matches
-  for (const [vi, en] of Object.entries(VI_TO_EN_KEYWORDS)) {
+  // Sort dictionary keys by descending length so "con cá vàng" matches before "cá"
+  const sortedEntries = Object.entries(VI_TO_EN_KEYWORDS).sort(
+    (a, b) => b[0].length - a[0].length
+  );
+
+  for (const [vi, en] of sortedEntries) {
     if (qLower.includes(vi)) {
       terms.push(en);
       break;
@@ -491,19 +505,24 @@ export const GoogleImageSearchModal: React.FC<GoogleImageSearchModalProps> = ({
                   <div
                     key={res.id}
                     onClick={() => handleSelect(res)}
-                    className={`relative rounded-2xl overflow-hidden aspect-[4/3] bg-white cursor-pointer transition-all touch-manipulation group ${
+                    className={`relative rounded-2xl overflow-hidden aspect-[4/3] bg-amber-100/60 cursor-pointer transition-all touch-manipulation group ${
                       isSelected
                         ? 'ring-4 ring-amber-500 scale-102 shadow-xl z-10'
-                        : 'hover:scale-102 hover:shadow-md border border-slate-200'
+                        : 'hover:scale-102 hover:shadow-md border border-amber-200/60'
                     }`}
                   >
+                    {/* Placeholder icon while loading */}
+                    <div className="absolute inset-0 flex items-center justify-center text-3xl opacity-40 select-none">
+                      🖼️
+                    </div>
+
                     <img
                       src={res.thumbUrl}
                       alt={res.title}
                       referrerPolicy="no-referrer"
                       crossOrigin="anonymous"
                       loading="lazy"
-                      className="w-full h-full object-cover"
+                      className="relative z-1 w-full h-full object-cover"
                       onError={(e) => {
                         const target = e.currentTarget;
                         if (!target.src.includes('/api/proxy-image') && res.url) {
