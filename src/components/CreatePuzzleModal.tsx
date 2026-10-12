@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Upload,
   Camera,
@@ -8,8 +8,10 @@ import {
   X,
   Check,
   Layers,
-  HelpCircle,
-  Search
+  Search,
+  Save,
+  CheckCircle,
+  AlertCircle
 } from 'lucide-react';
 import { CutStyle, PieceCount, PuzzleImage, PuzzleSettings } from '../types';
 import { PRESET_IMAGES } from '../data/presetImages';
@@ -23,6 +25,7 @@ interface CreatePuzzleModalProps {
   onSaveCustomImage?: (image: PuzzleImage) => void;
   onClose: () => void;
   initialImage?: PuzzleImage;
+  allCustomImages?: PuzzleImage[];
 }
 
 export const CreatePuzzleModal: React.FC<CreatePuzzleModalProps> = ({
@@ -32,15 +35,24 @@ export const CreatePuzzleModal: React.FC<CreatePuzzleModalProps> = ({
   onSaveCustomImage,
   onClose,
   initialImage,
+  allCustomImages = [],
 }) => {
   const [selectedImage, setSelectedImage] = useState<PuzzleImage>(
-    initialImage || PRESET_IMAGES[0]
+    initialImage || (allCustomImages.length > 0 ? allCustomImages[0] : PRESET_IMAGES[0])
+  );
+  const [imageTitle, setImageTitle] = useState<string>(
+    initialImage?.title || 'Ảnh Của Bé'
   );
   const [pieceCount, setPieceCount] = useState<PieceCount>(2);
   const [cutStyle, setCutStyle] = useState<CutStyle>('classic');
   const [splitOrientation, setSplitOrientation] = useState<'horizontal' | 'vertical'>('horizontal');
   const [ghostOpacity, setGhostOpacity] = useState<number>(0.5);
   const [smartAssist, setSmartAssist] = useState<boolean>(true);
+
+  // Status feedback
+  const [savedSuccessMessage, setSavedSuccessMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isProcessingFile, setIsProcessingFile] = useState<boolean>(false);
 
   // Camera state
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
@@ -50,31 +62,54 @@ export const CreatePuzzleModal: React.FC<CreatePuzzleModalProps> = ({
   // File input
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  useEffect(() => {
+    if (selectedImage) {
+      setImageTitle(selectedImage.title);
+    }
+  }, [selectedImage]);
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setIsProcessingFile(true);
+    setErrorMessage(null);
+    setSavedSuccessMessage(null);
+
     try {
-      const compressedSrc = await compressImage(file, 1024, 0.85);
+      const compressedSrc = await compressImage(file, 800, 0.8);
+      const cleanTitle = file.name.replace(/\.[^/.]+$/, '').trim() || 'Ảnh Của Bé';
       const customImg: PuzzleImage = {
         id: `custom-${Date.now()}`,
-        title: file.name.replace(/\.[^/.]+$/, '') || 'Ảnh Của Bé',
-        titleEn: 'My Photo',
+        title: cleanTitle,
+        titleEn: cleanTitle,
         category: 'custom',
         src: compressedSrc,
         isCustom: true,
       };
+
       setSelectedImage(customImg);
+      setImageTitle(cleanTitle);
+
+      // Save directly to persistent storage
       if (onSaveCustomImage) {
         onSaveCustomImage(customImg);
       }
-      audioManager.playPop();
+
+      setSavedSuccessMessage(`Đã lưu tranh "${cleanTitle}" vào bộ sưu tập! 💾`);
+      audioManager.playFanfare();
     } catch {
-      alert('Không thể đọc ảnh này. Bé thử chọn ảnh khác nhé!');
+      setErrorMessage('Không thể đọc ảnh này. Bé thử chọn ảnh định dạng JPG/PNG khác nhé!');
+    } finally {
+      setIsProcessingFile(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
   const startCamera = async () => {
+    setErrorMessage(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user', width: { ideal: 800 }, height: { ideal: 600 } },
@@ -89,7 +124,7 @@ export const CreatePuzzleModal: React.FC<CreatePuzzleModalProps> = ({
       }, 100);
       audioManager.playPop();
     } catch {
-      alert('Không thể kết nối camera. Vui lòng cho phép quyền truy cập máy ảnh!');
+      setErrorMessage('Không thể mở camera. Vui lòng cho phép quyền truy cập máy ảnh!');
     }
   };
 
@@ -111,31 +146,47 @@ export const CreatePuzzleModal: React.FC<CreatePuzzleModalProps> = ({
     if (!ctx) return;
 
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const src = canvas.toDataURL('image/jpeg', 0.9);
+    const src = canvas.toDataURL('image/jpeg', 0.85);
 
+    const title = 'Ảnh Chụp Của Bé 📸';
     const capturedImg: PuzzleImage = {
       id: `camera-${Date.now()}`,
-      title: 'Ảnh Chụp Của Bé 📸',
+      title,
       titleEn: 'Camera Photo',
       category: 'custom',
       src,
       isCustom: true,
     };
     setSelectedImage(capturedImg);
+    setImageTitle(title);
     if (onSaveCustomImage) {
       onSaveCustomImage(capturedImg);
     }
     stopCamera();
+    setSavedSuccessMessage('Đã chụp và lưu ảnh vào bộ sưu tập của bé! 📸');
     audioManager.playFanfare();
+  };
+
+  const handleSaveToCollectionOnly = () => {
+    const finalImage = { ...selectedImage, title: imageTitle || selectedImage.title };
+    if (onSaveCustomImage) {
+      onSaveCustomImage(finalImage);
+    }
+    audioManager.playFanfare();
+    setSavedSuccessMessage(`Đã lưu tranh "${finalImage.title}" vào bộ sưu tập!`);
+    setTimeout(() => {
+      onClose();
+    }, 1200);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     audioManager.playSnap();
-    if (selectedImage.isCustom && onSaveCustomImage) {
-      onSaveCustomImage(selectedImage);
+    const finalImage = { ...selectedImage, title: imageTitle || selectedImage.title };
+    if (finalImage.isCustom && onSaveCustomImage) {
+      onSaveCustomImage(finalImage);
     }
-    onStartPuzzle(selectedImage, {
+    onStartPuzzle(finalImage, {
       pieceCount,
       cutStyle,
       allowRotation: false,
@@ -157,10 +208,10 @@ export const CreatePuzzleModal: React.FC<CreatePuzzleModalProps> = ({
             </div>
             <div>
               <h2 className="text-xl sm:text-2xl font-black text-slate-800">
-                Tạo Tranh Ghép Mới Cho Bé
+                Tạo & Lưu Tranh Ghép Của Bé
               </h2>
               <p className="text-xs sm:text-sm text-slate-500 font-semibold">
-                Chọn hình ảnh và số mảnh ghép (bắt đầu từ 2 mảnh cực dễ!)
+                Tải ảnh gia đình, tranh bé vẽ hoặc chụp ảnh để lưu và tạo tranh ghép
               </p>
             </div>
           </div>
@@ -169,11 +220,25 @@ export const CreatePuzzleModal: React.FC<CreatePuzzleModalProps> = ({
               stopCamera();
               onClose();
             }}
-            className="w-10 h-10 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition-colors"
+            className="w-10 h-10 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Feedback Alert Banners */}
+        {savedSuccessMessage && (
+          <div className="mt-4 p-3 bg-emerald-50 border border-emerald-300 rounded-2xl flex items-center gap-2.5 text-emerald-800 text-xs sm:text-sm font-bold animate-in fade-in">
+            <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
+            <span className="flex-1">{savedSuccessMessage}</span>
+          </div>
+        )}
+        {errorMessage && (
+          <div className="mt-4 p-3 bg-rose-50 border border-rose-300 rounded-2xl flex items-center gap-2.5 text-rose-800 text-xs sm:text-sm font-bold animate-in fade-in">
+            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+            <span className="flex-1">{errorMessage}</span>
+          </div>
+        )}
 
         {/* Camera Modal View */}
         {isCameraActive ? (
@@ -185,30 +250,30 @@ export const CreatePuzzleModal: React.FC<CreatePuzzleModalProps> = ({
               <button
                 type="button"
                 onClick={capturePhoto}
-                className="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-2xl shadow-lg flex items-center gap-2"
+                className="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-2xl shadow-lg flex items-center gap-2 cursor-pointer"
               >
                 <Camera className="w-5 h-5" />
-                <span>Chụp Ảnh Này</span>
+                <span>Chụp & Lưu Ảnh Này</span>
               </button>
               <button
                 type="button"
                 onClick={stopCamera}
-                className="px-5 py-3 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-2xl"
+                className="px-5 py-3 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-2xl cursor-pointer"
               >
                 Hủy
               </button>
             </div>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-6 pt-5">
+          <form onSubmit={handleSubmit} className="space-y-5 pt-4">
             {/* 1. Image Selection Section */}
             <div>
-              <div className="flex items-center justify-between mb-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
                 <label className="text-sm font-black text-slate-800 flex items-center gap-2">
                   <ImageIcon className="w-4 h-4 text-amber-600" />
-                  <span>1. Chọn bức tranh để ghép:</span>
+                  <span>1. Chọn tranh hoặc tải ảnh mới:</span>
                 </label>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <input
                     type="file"
                     ref={fileInputRef}
@@ -219,15 +284,16 @@ export const CreatePuzzleModal: React.FC<CreatePuzzleModalProps> = ({
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold rounded-xl transition-all"
+                    disabled={isProcessingFile}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer disabled:opacity-50"
                   >
                     <Upload className="w-3.5 h-3.5" />
-                    <span>Tải ảnh lên</span>
+                    <span>{isProcessingFile ? 'Đang tải...' : 'Tải ảnh từ máy'}</span>
                   </button>
                   <button
                     type="button"
                     onClick={startCamera}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold rounded-xl transition-all"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
                   >
                     <Camera className="w-3.5 h-3.5" />
                     <span>Chụp ảnh</span>
@@ -239,7 +305,7 @@ export const CreatePuzzleModal: React.FC<CreatePuzzleModalProps> = ({
                         onClose();
                         onOpenGoogleSearch();
                       }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 text-xs font-bold rounded-xl transition-all"
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 text-xs font-bold rounded-xl transition-all cursor-pointer"
                     >
                       <Search className="w-3.5 h-3.5 text-amber-600" />
                       <span>Tìm Google</span>
@@ -251,7 +317,7 @@ export const CreatePuzzleModal: React.FC<CreatePuzzleModalProps> = ({
                       onClose();
                       onOpenDrawingPad();
                     }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-pink-50 hover:bg-pink-100 text-pink-700 border border-pink-200 text-xs font-bold rounded-xl transition-all"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-pink-50 hover:bg-pink-100 text-pink-700 border border-pink-200 text-xs font-bold rounded-xl transition-all cursor-pointer"
                   >
                     <Palette className="w-3.5 h-3.5" />
                     <span>Bé tự vẽ</span>
@@ -259,29 +325,64 @@ export const CreatePuzzleModal: React.FC<CreatePuzzleModalProps> = ({
                 </div>
               </div>
 
-              {/* Thumbnails row */}
-              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2.5 max-h-36 overflow-y-auto p-1 bg-amber-50/50 rounded-2xl border border-amber-200">
-                {selectedImage.isCustom && (
+              {/* Thumbnails row (Shows custom saved images + presets) */}
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2.5 max-h-36 overflow-y-auto p-1.5 bg-amber-50/50 rounded-2xl border border-amber-200">
+                {/* Currently selected custom image if not already in custom list */}
+                {selectedImage.isCustom &&
+                  !allCustomImages.some((p) => p.id === selectedImage.id) && (
+                    <div
+                      onClick={() => audioManager.playPop()}
+                      className="relative rounded-xl overflow-hidden aspect-[4/3] ring-4 ring-amber-500 cursor-pointer shadow-md bg-white"
+                    >
+                      <img
+                        src={selectedImage.src}
+                        alt={selectedImage.title}
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute bottom-0 inset-x-0 bg-black/60 text-[10px] text-white text-center font-bold py-0.5 truncate px-1">
+                        Ảnh vừa tải
+                      </div>
+                    </div>
+                  )}
+
+                {/* All user-uploaded custom images */}
+                {allCustomImages.map((img) => (
                   <div
-                    onClick={() => audioManager.playPop()}
-                    className="relative rounded-xl overflow-hidden aspect-[4/3] ring-4 ring-amber-500 cursor-pointer shadow-md bg-white"
+                    key={img.id}
+                    onClick={() => {
+                      setSelectedImage(img);
+                      setImageTitle(img.title);
+                      audioManager.playPop();
+                    }}
+                    className={`relative rounded-xl overflow-hidden aspect-[4/3] cursor-pointer transition-transform bg-white ${
+                      selectedImage.id === img.id
+                        ? 'ring-4 ring-amber-500 scale-105 shadow-md'
+                        : 'opacity-85 hover:opacity-100 hover:scale-102 border border-blue-300'
+                    }`}
                   >
                     <img
-                      src={selectedImage.src}
-                      alt={selectedImage.title}
+                      src={img.src}
+                      alt={img.title}
                       referrerPolicy="no-referrer"
                       className="w-full h-full object-cover"
                     />
-                    <div className="absolute bottom-0 inset-x-0 bg-black/60 text-[10px] text-white text-center font-bold py-0.5 truncate px-1">
-                      Ảnh của bé
+                    <div className="absolute top-1 right-1 bg-blue-600 text-[9px] text-white px-1 rounded-sm font-bold">
+                      Bé
+                    </div>
+                    <div className="absolute bottom-0 inset-x-0 bg-black/70 text-[10px] text-white text-center font-bold py-0.5 truncate px-1">
+                      {img.title}
                     </div>
                   </div>
-                )}
+                ))}
+
+                {/* Preset sample images */}
                 {PRESET_IMAGES.map((img) => (
                   <div
                     key={img.id}
                     onClick={() => {
                       setSelectedImage(img);
+                      setImageTitle(img.title);
                       audioManager.playPop();
                     }}
                     className={`relative rounded-xl overflow-hidden aspect-[4/3] cursor-pointer transition-transform ${
@@ -302,6 +403,20 @@ export const CreatePuzzleModal: React.FC<CreatePuzzleModalProps> = ({
                   </div>
                 ))}
               </div>
+
+              {/* Title input for custom image */}
+              <div className="mt-2.5 flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-700 whitespace-nowrap">
+                  Tên tranh:
+                </span>
+                <input
+                  type="text"
+                  value={imageTitle}
+                  onChange={(e) => setImageTitle(e.target.value)}
+                  placeholder="Đặt tên cho bức tranh này..."
+                  className="flex-1 px-3 py-1.5 text-xs sm:text-sm bg-white border border-amber-300 rounded-xl font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
             </div>
 
             {/* 2. Piece Count Selection */}
@@ -319,156 +434,90 @@ export const CreatePuzzleModal: React.FC<CreatePuzzleModalProps> = ({
                     : pieceCount === 4
                     ? '4 Mảnh (2x2) · Tiêu chuẩn'
                     : pieceCount === 6
-                    ? '6 Mảnh (2x3)'
+                    ? '6 Mảnh (3x2) · Rèn luyện'
+                    : pieceCount === 8
+                    ? '8 Mảnh (4x2)'
                     : pieceCount === 9
                     ? '9 Mảnh (3x3)'
                     : `${pieceCount} Mảnh`}
                 </span>
               </div>
 
-              <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
-                {([2, 3, 4, 6, 8, 9, 12, 16] as PieceCount[]).map((num) => (
+              <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
+                {([2, 3, 4, 6, 8, 9, 12] as PieceCount[]).map((count) => (
                   <button
-                    key={num}
+                    key={count}
                     type="button"
                     onClick={() => {
-                      setPieceCount(num);
+                      setPieceCount(count);
                       audioManager.playPop();
                     }}
-                    className={`py-2.5 px-1 rounded-2xl flex flex-col items-center justify-center font-black transition-all ${
-                      pieceCount === num
-                        ? 'bg-amber-500 text-white shadow-lg ring-4 ring-amber-200 scale-105'
-                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                    className={`py-2 px-3 rounded-2xl font-black text-sm flex flex-col items-center justify-center gap-0.5 transition-all cursor-pointer ${
+                      pieceCount === count
+                        ? 'bg-amber-500 text-white shadow-md ring-2 ring-amber-300 scale-102'
+                        : 'bg-amber-50/70 hover:bg-amber-100 text-slate-700 border border-amber-200'
                     }`}
                   >
-                    <span className="text-lg leading-none">{num}</span>
-                    <span className="text-[10px] uppercase font-bold opacity-80 mt-0.5">mảnh</span>
+                    <span>{count} Mảnh</span>
+                    <span className="text-[10px] font-bold opacity-80">
+                      {count === 2 ? 'Nửa/Nửa' : count === 4 ? '2x2' : count === 6 ? '3x2' : count === 9 ? '3x3' : ''}
+                    </span>
                   </button>
                 ))}
               </div>
+            </div>
 
-              {/* Special orientation toggle for 2 and 3 pieces */}
+            {/* 3. Orientation & Options */}
+            <div className="p-3 bg-amber-50/60 rounded-2xl border border-amber-200/80 space-y-3">
               {(pieceCount === 2 || pieceCount === 3) && (
-                <div className="mt-3 p-3 bg-amber-50 rounded-2xl border border-amber-200 flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-xs font-bold text-amber-900">
-                    Hướng chia {pieceCount} mảnh:
-                  </span>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-amber-950">Kiểu chia mảnh:</span>
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => {
-                        setSplitOrientation('horizontal');
-                        audioManager.playPop();
-                      }}
-                      className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all ${
+                      onClick={() => setSplitOrientation('horizontal')}
+                      className={`px-3 py-1 text-xs font-bold rounded-xl transition-all cursor-pointer ${
                         splitOrientation === 'horizontal'
-                          ? 'bg-amber-600 text-white shadow-sm'
-                          : 'bg-white text-slate-700 border border-slate-200'
+                          ? 'bg-amber-600 text-white shadow-xs'
+                          : 'bg-white text-slate-700 border border-amber-200'
                       }`}
                     >
-                      Trái - Phải (Dọc)
+                      Chia Trái / Phải (Dọc)
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        setSplitOrientation('vertical');
-                        audioManager.playPop();
-                      }}
-                      className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all ${
+                      onClick={() => setSplitOrientation('vertical')}
+                      className={`px-3 py-1 text-xs font-bold rounded-xl transition-all cursor-pointer ${
                         splitOrientation === 'vertical'
-                          ? 'bg-amber-600 text-white shadow-sm'
-                          : 'bg-white text-slate-700 border border-slate-200'
+                          ? 'bg-amber-600 text-white shadow-xs'
+                          : 'bg-white text-slate-700 border border-amber-200'
                       }`}
                     >
-                      Trên - Dưới (Ngang)
+                      Chia Trên / Dưới (Ngang)
                     </button>
                   </div>
                 </div>
               )}
-            </div>
 
-            {/* 3. Cut Style (Classic, Wavy, Tiles) */}
-            <div>
-              <label className="text-sm font-black text-slate-800 flex items-center gap-2 mb-2">
-                <Sparkles className="w-4 h-4 text-amber-600" />
-                <span>3. Kiểu đường cắt ghép hình:</span>
-              </label>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                {[
-                  {
-                    id: 'classic' as CutStyle,
-                    name: 'Răng Cưa Cổ Điển',
-                    desc: 'Có tai ghép lồi lõm truyền thống',
-                    badge: 'Khuyên Dùng',
-                  },
-                  {
-                    id: 'wavy' as CutStyle,
-                    name: 'Lượn Sóng Nhẹ',
-                    desc: 'Đường cong mềm mại cho mầm non',
-                    badge: 'Bé Thích',
-                  },
-                  {
-                    id: 'tiles' as CutStyle,
-                    name: 'Mảnh Vuông Thẳng',
-                    desc: 'Cực kỳ dễ ghép cho bé mới tập',
-                    badge: 'Bé 2 Tuổi',
-                  },
-                ].map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => {
-                      setCutStyle(s.id);
-                      audioManager.playPop();
-                    }}
-                    className={`p-3 rounded-2xl text-left border-2 transition-all ${
-                      cutStyle === s.id
-                        ? 'border-amber-500 bg-amber-50/70 shadow-md ring-2 ring-amber-300'
-                        : 'border-slate-200 hover:border-slate-300 bg-white'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-black text-slate-800 text-sm">{s.name}</span>
-                      <span className="text-[10px] font-bold text-amber-700 bg-amber-200/60 px-1.5 py-0.5 rounded-md">
-                        {s.badge}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-500 font-medium">{s.desc}</p>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* 4. Toddler Help Aids (Ghost background, tap-to-place) */}
-            <div className="p-3.5 bg-amber-50/70 rounded-2xl border border-amber-200 space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <HelpCircle className="w-4 h-4 text-amber-700" />
-                  <span className="text-xs sm:text-sm font-bold text-amber-950">
-                    Hình mẫu mờ bên dưới (Gợi ý cho bé):
-                  </span>
-                </div>
-                <div className="flex gap-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-amber-950">Kiểu cắt mảnh ghép:</span>
+                <div className="flex gap-2">
                   {[
-                    { label: 'Tắt (0%)', val: 0 },
-                    { label: 'Mờ nhẹ (25%)', val: 0.25 },
-                    { label: 'Vừa (50%)', val: 0.5 },
-                    { label: 'Rõ nét (75%)', val: 0.75 },
-                  ].map((item) => (
+                    { id: 'classic', label: 'Ghép mộng (Classic)' },
+                    { id: 'wavy', label: 'Lượn sóng mềm' },
+                    { id: 'tiles', label: 'Khối vuông (Tiles)' },
+                  ].map((style) => (
                     <button
-                      key={item.val}
+                      key={style.id}
                       type="button"
-                      onClick={() => {
-                        setGhostOpacity(item.val);
-                        audioManager.playPop();
-                      }}
-                      className={`px-2.5 py-1 text-xs font-bold rounded-xl transition-all ${
-                        ghostOpacity === item.val
-                          ? 'bg-amber-600 text-white shadow-sm'
-                          : 'bg-white text-slate-700 hover:bg-amber-100'
+                      onClick={() => setCutStyle(style.id as CutStyle)}
+                      className={`px-2.5 py-1 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                        cutStyle === style.id
+                          ? 'bg-amber-600 text-white shadow-xs'
+                          : 'bg-white text-slate-700 border border-amber-200'
                       }`}
                     >
-                      {item.label}
+                      {style.label}
                     </button>
                   ))}
                 </div>
@@ -490,26 +539,39 @@ export const CreatePuzzleModal: React.FC<CreatePuzzleModalProps> = ({
               </div>
             </div>
 
-            {/* Submit Action */}
-            <div className="flex justify-end gap-3 pt-2">
+            {/* Action Buttons: Save to Collection OR Start Puzzle */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
               <button
                 type="button"
                 onClick={() => {
                   stopCamera();
                   onClose();
                 }}
-                className="px-5 py-3 rounded-2xl font-bold text-slate-600 hover:bg-slate-100 transition-colors"
+                className="px-4 py-2.5 rounded-xl font-bold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer text-sm"
               >
                 Đóng
               </button>
-              <button
-                type="submit"
-                className="flex items-center gap-2 px-7 py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black rounded-2xl shadow-xl shadow-amber-500/25 active:scale-95 transition-all text-base cursor-pointer"
-              >
-                <Sparkles className="w-5 h-5" />
-                <span>Bắt Đầu Ghép Tranh!</span>
-                <Check className="w-5 h-5 ml-1" />
-              </button>
+
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={handleSaveToCollectionOnly}
+                  className="flex items-center gap-1.5 px-4 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-300 font-bold rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer text-sm"
+                  title="Lưu tranh vào bộ sưu tập để bé chơi sau"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>Lưu Vào Bộ Sưu Tập</span>
+                </button>
+
+                <button
+                  type="submit"
+                  className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black rounded-xl shadow-md active:scale-95 transition-all text-sm cursor-pointer"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>Bắt Đầu Ghép Tranh!</span>
+                  <Check className="w-4 h-4 ml-1" />
+                </button>
+              </div>
             </div>
           </form>
         )}

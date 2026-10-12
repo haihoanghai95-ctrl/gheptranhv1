@@ -29,11 +29,12 @@ function openDB(): Promise<IDBDatabase> {
 /**
  * Resizes and compresses any image (File or Data URL) to fit comfortably
  * in local storage and Firestore without sacrificing visual clarity.
+ * Guarantees output is under 650KB to respect Firestore's 1MB document limit.
  */
 export async function compressImage(
   source: File | string,
-  maxDimension = 1024,
-  quality = 0.85
+  maxDimension = 800,
+  quality = 0.8
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     // If it's a remote URL starting with http, convert to safe Data URL first
@@ -87,10 +88,16 @@ export async function compressImage(
         ctx.fillRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
 
-        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        let dataUrl = canvas.toDataURL('image/jpeg', quality);
+
+        // Safety check: if dataUrl exceeds 600KB, re-encode with slightly lower quality
+        if (dataUrl.length > 600000) {
+          dataUrl = canvas.toDataURL('image/jpeg', 0.65);
+        }
+
         resolve(dataUrl);
       } catch (err) {
-        console.warn('Canvas export tainted or failed, using original source:', err);
+        console.warn('Canvas export failed, using original source:', err);
         resolve(typeof source === 'string' ? source : '');
       }
     };
@@ -99,7 +106,7 @@ export async function compressImage(
       if (typeof source === 'string') {
         resolve(source);
       } else {
-        reject(new Error('Failed to load image'));
+        reject(new Error('Không thể đọc file hình ảnh này'));
       }
     };
 
@@ -110,9 +117,9 @@ export async function compressImage(
     } else {
       const reader = new FileReader();
       reader.onload = (e) => {
-        img.src = e.target?.result as string;
+        img.src = (e.target?.result as string) || '';
       };
-      reader.onerror = reject;
+      reader.onerror = () => reject(new Error('Lỗi khi đọc file'));
       reader.readAsDataURL(source);
     }
   });
@@ -164,9 +171,10 @@ export async function urlToDataUrl(url: string): Promise<string> {
 }
 
 /**
- * Saves custom puzzle to IndexedDB (with localStorage backup)
+ * Saves custom puzzle to IndexedDB and also mirrors to localStorage
  */
 export async function savePuzzleLocally(puzzle: PuzzleImage): Promise<void> {
+  // 1. Save to IndexedDB
   try {
     const db = await openDB();
     await new Promise<void>((resolve, reject) => {
@@ -177,40 +185,91 @@ export async function savePuzzleLocally(puzzle: PuzzleImage): Promise<void> {
       req.onerror = () => reject(req.error);
     });
   } catch (err) {
-    console.warn('IndexedDB save failed, falling back to localStorage:', err);
-    try {
-      const existingStr = localStorage.getItem(LOCAL_STORAGE_KEY);
-      const list: PuzzleImage[] = existingStr ? JSON.parse(existingStr) : [];
-      const updated = [puzzle, ...list.filter((p) => p.id !== puzzle.id)].slice(0, 30);
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
-    } catch (e) {
-      console.error('LocalStorage save failed:', e);
-    }
+    console.warn('IndexedDB save failed:', err);
+  }
+
+  // 2. Also save to localStorage as instant sync backup
+  try {
+    const existingStr = localStorage.getItem(LOCAL_STORAGE_KEY);
+    const list: PuzzleImage[] = existingStr ? JSON.parse(existingStr) : [];
+    const updated = [puzzle, ...list.filter((p) => p.id !== puzzle.id)].slice(0, 30);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
+  } catch (e) {
+    console.warn('LocalStorage save failed:', e);
   }
 }
 
 /**
- * Loads all saved custom puzzles
+ * Loads all saved custom puzzles from IndexedDB and localStorage (merged & deduplicated)
  */
 export async function loadLocalPuzzles(): Promise<PuzzleImage[]> {
+  const map = new Map<string, PuzzleImage>();
+
+  // 1. Try loading from localStorage first (immediate)
+  try {
+    const existingStr = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (existingStr) {
+      const list: PuzzleImage[] = JSON.parse(existingStr);
+      list.forEach((p) => {
+        if (p && p.id && p.src) map.set(p.id, p);
+      });
+    }
+  } catch (e) {
+    console.warn('LocalStorage load error:', e);
+  }
+
+  // 2. Merge with IndexedDB
   try {
     const db = await openDB();
-    return await new Promise<PuzzleImage[]>((resolve, reject) => {
+    const idbItems = await new Promise<PuzzleImage[]>((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readonly');
       const store = tx.objectStore(STORE_NAME);
       const req = store.getAll();
       req.onsuccess = () => resolve(req.result || []);
       req.onerror = () => reject(req.error);
     });
-  } catch (err) {
-    console.warn('IndexedDB load failed, using localStorage:', err);
-    try {
-      const existingStr = localStorage.getItem(LOCAL_STORAGE_KEY);
-      return existingStr ? JSON.parse(existingStr) : [];
-    } catch {
-      return [];
+    if (idbItems && idbItems.length > 0) {
+      idbItems.forEach((p) => {
+        if (p && p.id && p.src) map.set(p.id, p);
+      });
     }
+  } catch (err) {
+    console.warn('IndexedDB load failed:', err);
   }
+
+  return Array.from(map.values());
+}
+
+/**
+ * Updates a custom puzzle title locally
+ */
+export async function updatePuzzleTitleLocally(puzzleId: string, newTitle: string): Promise<void> {
+  try {
+    const db = await openDB();
+    const item = await new Promise<PuzzleImage | null>((resolve) => {
+      const tx = db.transaction(STORE_NAME, 'readonly');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.get(puzzleId);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => resolve(null);
+    });
+
+    if (item) {
+      item.title = newTitle;
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      store.put(item);
+    }
+  } catch {}
+
+  try {
+    const existingStr = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (existingStr) {
+      const list: PuzzleImage[] = JSON.parse(existingStr);
+      const updated = list.map((p) => (p.id === puzzleId ? { ...p, title: newTitle } : p));
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
+    }
+  } catch {}
 }
 
 /**

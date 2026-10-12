@@ -13,6 +13,7 @@ import {
   savePuzzleLocally,
   loadLocalPuzzles,
   deletePuzzleLocally,
+  updatePuzzleTitleLocally,
 } from './utils/puzzleStorage';
 import {
   auth,
@@ -22,6 +23,7 @@ import {
   savePuzzleCompletionScore,
   loadCloudPuzzles,
   deleteCustomPuzzleFromFirebase,
+  updateCustomPuzzleTitleInFirebase,
 } from './firebase';
 
 export default function App() {
@@ -51,11 +53,34 @@ export default function App() {
     action?: () => void;
   } | null>(null);
 
+  // Sync local custom puzzles to Firebase for signed-in user
+  const syncLocalToCloud = async () => {
+    try {
+      const localPuzzles = await loadLocalPuzzles();
+      if (localPuzzles && localPuzzles.length > 0) {
+        for (const p of localPuzzles) {
+          if (p.isCustom) {
+            await saveCustomPuzzleToFirebase({
+              id: p.id,
+              title: p.title,
+              src: p.src,
+              category: p.category,
+              pieceCount: 2,
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Sync local to cloud failed:', e);
+    }
+  };
+
   // Auth state listener & Auto-load both Local and Cloud custom puzzles
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       if (currentUser && !currentUser.isAnonymous) {
         setUser(currentUser);
+        syncLocalToCloud();
       } else {
         setUser(null);
       }
@@ -231,6 +256,14 @@ export default function App() {
     setImages((prev) => prev.filter((p) => p.id !== puzzleId));
   };
 
+  const handleUpdatePuzzleTitle = async (puzzleId: string, newTitle: string) => {
+    await updatePuzzleTitleLocally(puzzleId, newTitle);
+    await updateCustomPuzzleTitleInFirebase(puzzleId, newTitle);
+    setImages((prev) =>
+      prev.map((img) => (img.id === puzzleId ? { ...img, title: newTitle } : img))
+    );
+  };
+
   const handleNextDifficulty = () => {
     const progression: PieceCount[] = [2, 4, 6, 9, 12, 16];
     const currentIndex = progression.indexOf(activeSettings.pieceCount);
@@ -339,6 +372,8 @@ export default function App() {
             }}
             onOpenGoogleSearch={() => setShowGoogleSearchModal(true)}
             onDeletePuzzle={handleDeleteCustomPuzzle}
+            onSaveCustomImage={persistCustomPuzzle}
+            onUpdatePuzzleTitle={handleUpdatePuzzleTitle}
             user={user}
             onLogin={handleLogin}
             isLoggingIn={isLoggingIn}
@@ -438,6 +473,7 @@ export default function App() {
       {showCreateModal && (
         <CreatePuzzleModal
           initialImage={customizingImage}
+          allCustomImages={images.filter((img) => img.isCustom)}
           onStartPuzzle={handleStartPuzzle}
           onSaveCustomImage={persistCustomPuzzle}
           onOpenDrawingPad={() => {

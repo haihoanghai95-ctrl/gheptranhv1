@@ -127,8 +127,8 @@ export const KidDrawingPad: React.FC<KidDrawingPadProps> = ({ onUseDrawing, onCa
     const canvas = canvasRef.current;
     if (!canvas) return;
     audioManager.playFanfare();
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-    onUseDrawing(dataUrl, 'Bức Tranh Của Bé 🎨');
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+    onUseDrawing(dataUrl, 'Bức Tranh Bé Vẽ 🎨');
   };
 
   return (

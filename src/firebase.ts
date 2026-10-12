@@ -199,15 +199,17 @@ export async function savePuzzleCompletionScore(data: {
   }
 }
 
-// Save custom puzzle
+// Save custom puzzle to Firestore
 export async function saveCustomPuzzleToFirebase(puzzle: {
   id: string;
   title: string;
   src: string;
   category: string;
   pieceCount: number;
-}): Promise<void> {
-  if (!auth.currentUser || auth.currentUser.isAnonymous) return;
+}): Promise<{ success: boolean; error?: string }> {
+  if (!auth.currentUser || auth.currentUser.isAnonymous) {
+    return { success: false, error: 'Chưa đăng nhập Gmail' };
+  }
   const path = `puzzles/${puzzle.id}`;
   try {
     await setDoc(doc(db, 'puzzles', puzzle.id), {
@@ -215,8 +217,24 @@ export async function saveCustomPuzzleToFirebase(puzzle: {
       userId: auth.currentUser.uid,
       createdAt: new Date().toISOString(),
     });
+    return { success: true };
+  } catch (err: any) {
+    console.warn('Lỗi lưu Firestore tranh:', err);
+    return { success: false, error: err?.message || 'Không thể đồng bộ lên đám mây' };
+  }
+}
+
+// Update custom puzzle title in Firestore
+export async function updateCustomPuzzleTitleInFirebase(
+  puzzleId: string,
+  newTitle: string
+): Promise<void> {
+  if (!auth.currentUser || auth.currentUser.isAnonymous) return;
+  try {
+    const docRef = doc(db, 'puzzles', puzzleId);
+    await setDoc(docRef, { title: newTitle, updatedAt: new Date().toISOString() }, { merge: true });
   } catch (err) {
-    handleFirestoreError(err, OperationType.WRITE, path);
+    console.warn('Lỗi cập nhật tên tranh Firestore:', err);
   }
 }
 
@@ -224,23 +242,27 @@ export async function saveCustomPuzzleToFirebase(puzzle: {
 export async function loadCloudPuzzles(): Promise<any[]> {
   const path = 'puzzles';
   try {
-    const q = query(collection(db, path), orderBy('createdAt', 'desc'), limit(20));
+    const q = query(collection(db, path), orderBy('createdAt', 'desc'), limit(50));
     const snapshot = await getDocs(q);
     return snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
   } catch (err) {
-    console.warn('Could not load cloud puzzles:', err);
-    return [];
+    console.warn('Could not load cloud puzzles with orderBy, trying fallback:', err);
+    try {
+      const snapshot = await getDocs(collection(db, path));
+      return snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+    } catch {
+      return [];
+    }
   }
 }
 
 // Delete custom puzzle from Firestore
 export async function deleteCustomPuzzleFromFirebase(puzzleId: string): Promise<void> {
   if (!auth.currentUser) return;
-  const path = `puzzles/${puzzleId}`;
   try {
     await deleteDoc(doc(db, 'puzzles', puzzleId));
   } catch (err) {
-    handleFirestoreError(err, OperationType.DELETE, path);
+    console.warn('Lỗi xóa tranh Firestore:', err);
   }
 }
 
