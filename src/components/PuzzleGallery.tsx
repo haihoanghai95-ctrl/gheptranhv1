@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { Category, PieceCount, PuzzleImage, PuzzleSettings } from '../types';
 import { audioManager } from '../utils/audio';
+import { User } from 'firebase/auth';
 
 interface PuzzleGalleryProps {
   images: PuzzleImage[];
@@ -20,6 +21,9 @@ interface PuzzleGalleryProps {
   onOpenUploadModal: () => void;
   onOpenGoogleSearch?: () => void;
   onDeletePuzzle?: (puzzleId: string) => void;
+  user?: User | null;
+  onLogin?: () => void;
+  isLoggingIn?: boolean;
 }
 
 export const PuzzleGallery: React.FC<PuzzleGalleryProps> = ({
@@ -30,6 +34,9 @@ export const PuzzleGallery: React.FC<PuzzleGalleryProps> = ({
   onOpenUploadModal,
   onOpenGoogleSearch,
   onDeletePuzzle,
+  user,
+  onLogin,
+  isLoggingIn = false,
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<Category>('all');
   const [selectedQuickPieces, setSelectedQuickPieces] = useState<PieceCount>(2);
@@ -179,6 +186,36 @@ export const PuzzleGallery: React.FC<PuzzleGalleryProps> = ({
           ))}
         </div>
       </div>
+
+      {/* Cloud Sync Notice for Custom category */}
+      {selectedCategory === 'custom' && !user && onLogin && (
+        <div className="bg-gradient-to-r from-blue-50 to-amber-50 p-4 rounded-2xl border border-blue-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">☁️</span>
+            <div>
+              <p className="text-xs sm:text-sm font-bold text-slate-800">
+                Đăng nhập tài khoản Gmail để đồng bộ tranh của bé
+              </p>
+              <p className="text-[11px] text-slate-500">
+                Tranh bé tự vẽ và tự tạo sẽ tự động lưu an toàn lên đám mây, không lo mất khi đổi máy hoặc xóa bộ nhớ.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onLogin}
+            disabled={isLoggingIn}
+            className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-xl text-xs border border-slate-300 shadow-xs flex items-center gap-1.5 cursor-pointer shrink-0 disabled:opacity-60"
+          >
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+            </svg>
+            <span>{isLoggingIn ? 'Đang kết nối...' : 'Đăng nhập Gmail'}</span>
+          </button>
+        </div>
+      )}
 
       {/* Puzzle Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">

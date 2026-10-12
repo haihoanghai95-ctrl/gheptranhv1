@@ -43,11 +43,22 @@ export default function App() {
   const [customizingImage, setCustomizingImage] = useState<PuzzleImage | undefined>(undefined);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [user, setUser] = useState<User | null>(null);
+  const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
+  const [authBanner, setAuthBanner] = useState<{
+    type: 'success' | 'error' | 'info';
+    message: string;
+    actionLabel?: string;
+    action?: () => void;
+  } | null>(null);
 
   // Auth state listener & Auto-load both Local and Cloud custom puzzles
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
+      if (currentUser && !currentUser.isAnonymous) {
+        setUser(currentUser);
+      } else {
+        setUser(null);
+      }
     });
 
     // 1. Load locally stored custom puzzles (Guarantees permanence even without internet or login)
@@ -87,6 +98,64 @@ export default function App() {
     const next = !soundEnabled;
     setSoundEnabled(next);
     audioManager.setSoundEnabled(next);
+  };
+
+  const handleLogin = async () => {
+    setIsLoggingIn(true);
+    setAuthBanner(null);
+    audioManager.playPop();
+
+    const res = await loginWithGoogle();
+    setIsLoggingIn(false);
+
+    if (res.success && res.user) {
+      audioManager.playFanfare();
+      const name = res.user.displayName || res.user.email?.split('@')[0] || 'Phụ huynh';
+      setAuthBanner({
+        type: 'success',
+        message: `Đăng nhập Gmail thành công! Xin chào ${name} 🎉 Tranh của bé đã được kết nối lưu trữ đám mây.`,
+      });
+      setTimeout(() => setAuthBanner(null), 6000);
+
+      // Reload cloud puzzles for user
+      loadCloudPuzzles().then((cloudPuzzles) => {
+        if (cloudPuzzles && cloudPuzzles.length > 0) {
+          const mapped: PuzzleImage[] = cloudPuzzles.map((cp) => ({
+            id: cp.id,
+            title: cp.title || 'Tranh của bé',
+            titleEn: cp.title || 'Custom Puzzle',
+            category: 'custom',
+            src: cp.src,
+            isCustom: true,
+          }));
+          setImages((prev) => {
+            const existingIds = new Set(prev.map((p) => p.id));
+            const newOnes = mapped.filter((p) => !existingIds.has(p.id));
+            return [...newOnes, ...prev];
+          });
+        }
+      });
+    } else {
+      audioManager.playWrong();
+      const isPopupBlocked = res.errorCode === 'auth/popup-blocked';
+      setAuthBanner({
+        type: 'error',
+        message: res.error || 'Đăng nhập Gmail không thành công. Vui lòng thử lại!',
+        actionLabel: isPopupBlocked ? 'Mở lại đăng nhập Google' : 'Thử lại ngay',
+        action: () => handleLogin(),
+      });
+    }
+  };
+
+  const handleLogout = async () => {
+    audioManager.playPop();
+    await logoutFirebase();
+    setUser(null);
+    setAuthBanner({
+      type: 'info',
+      message: 'Đã đăng xuất tài khoản Gmail. Tranh của bé vẫn được lưu an toàn trên máy!',
+    });
+    setTimeout(() => setAuthBanner(null), 5000);
   };
 
   // Helper to permanently save custom puzzles locally and to Firebase
@@ -212,9 +281,49 @@ export default function App() {
         soundEnabled={soundEnabled}
         onToggleSound={handleToggleSound}
         user={user}
-        onLogin={loginWithGoogle}
-        onLogout={logoutFirebase}
+        isLoggingIn={isLoggingIn}
+        onLogin={handleLogin}
+        onLogout={handleLogout}
       />
+
+      {/* Auth Notification Banner */}
+      {authBanner && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-3 w-full">
+          <div
+            className={`rounded-2xl p-3 sm:p-4 border shadow-xs flex items-center justify-between gap-3 transition-all ${
+              authBanner.type === 'success'
+                ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+                : authBanner.type === 'error'
+                ? 'bg-rose-50 border-rose-300 text-rose-900'
+                : 'bg-amber-50 border-amber-300 text-amber-900'
+            }`}
+          >
+            <div className="flex items-center gap-2.5 text-xs sm:text-sm font-bold flex-1">
+              <span className="text-base sm:text-lg shrink-0">
+                {authBanner.type === 'success' ? '🎉' : authBanner.type === 'error' ? '⚠️' : 'ℹ️'}
+              </span>
+              <span>{authBanner.message}</span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {authBanner.action && authBanner.actionLabel && (
+                <button
+                  onClick={authBanner.action}
+                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white font-black text-xs rounded-xl shadow-xs transition-transform active:scale-95 cursor-pointer whitespace-nowrap"
+                >
+                  {authBanner.actionLabel}
+                </button>
+              )}
+              <button
+                onClick={() => setAuthBanner(null)}
+                className="p-1 hover:opacity-70 text-slate-500 cursor-pointer font-bold text-xs"
+                title="Đóng thông báo"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Content Area */}
       <main className="flex-1 py-4">
@@ -230,6 +339,9 @@ export default function App() {
             }}
             onOpenGoogleSearch={() => setShowGoogleSearchModal(true)}
             onDeletePuzzle={handleDeleteCustomPuzzle}
+            user={user}
+            onLogin={handleLogin}
+            isLoggingIn={isLoggingIn}
           />
         )}
 

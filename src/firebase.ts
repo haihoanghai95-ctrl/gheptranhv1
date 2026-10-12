@@ -3,7 +3,6 @@ import {
   getAuth,
   GoogleAuthProvider,
   signInWithPopup,
-  signInAnonymously,
   signOut,
   onAuthStateChanged,
   User,
@@ -27,14 +26,19 @@ import firebaseConfig from '../firebase-applet-config.json';
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId); /* CRITICAL: The app will break without this line */
 export const auth = getAuth(app);
-export const googleProvider = new GoogleAuthProvider();
 
-// Attempt silent anonymous auth if not signed in, so guest toddlers can save puzzles to cloud
+// Configure Google Provider for smooth Gmail login
+export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({
+  prompt: 'select_account',
+});
+googleProvider.addScope('email');
+googleProvider.addScope('profile');
+
+// If any anonymous session lingers from previous attempts, clean it up
 onAuthStateChanged(auth, (user) => {
-  if (!user) {
-    signInAnonymously(auth).catch(() => {
-      // Anonymous auth disabled or offline; app uses local storage seamlessly
-    });
+  if (user && user.isAnonymous) {
+    signOut(auth).catch(() => {});
   }
 });
 
@@ -102,14 +106,26 @@ async function testConnection() {
 }
 testConnection();
 
+export interface LoginResult {
+  success: boolean;
+  user?: User;
+  error?: string;
+  errorCode?: string;
+}
+
 // Authentication helpers
-export async function loginWithGoogle(): Promise<User | null> {
+export async function loginWithGoogle(): Promise<LoginResult> {
   try {
+    // If an anonymous session exists, clear it first so Google credential does not conflict
+    if (auth.currentUser && auth.currentUser.isAnonymous) {
+      await signOut(auth);
+    }
+
     const result = await signInWithPopup(auth, googleProvider);
     if (result.user) {
-      // Create or update user profile
+      // Sync user profile to Firestore in background without blocking or failing auth
       const userRef = doc(db, 'users', result.user.uid);
-      await setDoc(
+      setDoc(
         userRef,
         {
           userId: result.user.uid,
@@ -118,12 +134,35 @@ export async function loginWithGoogle(): Promise<User | null> {
           createdAt: new Date().toISOString(),
         },
         { merge: true }
-      );
+      ).catch((err) => {
+        console.warn('Could not sync user profile to Firestore:', err);
+      });
+
+      return { success: true, user: result.user };
     }
-    return result.user;
-  } catch (error) {
+    return { success: false, error: 'Không nhận được thông tin tài khoản Google.' };
+  } catch (error: any) {
     console.error('Login error:', error);
-    return null;
+    const code = error?.code || '';
+    let friendlyMessage = 'Đăng nhập không thành công. Vui lòng thử lại!';
+
+    if (code === 'auth/popup-blocked') {
+      friendlyMessage = 'Trình duyệt đang chặn cửa sổ popup. Vui lòng cho phép popup để tiếp tục đăng nhập Google.';
+    } else if (code === 'auth/popup-closed-by-user') {
+      friendlyMessage = 'Cửa sổ đăng nhập bị đóng trước khi hoàn tất.';
+    } else if (code === 'auth/cancelled-popup-request') {
+      friendlyMessage = 'Yêu cầu đăng nhập trước đó đã bị hủy. Hãy bấm thử lại nhé!';
+    } else if (code === 'auth/network-request-failed') {
+      friendlyMessage = 'Lỗi kết nối mạng khi liên hệ Google. Vui lòng kiểm tra Wifi/4G!';
+    } else if (code === 'auth/unauthorized-domain') {
+      friendlyMessage = 'Tên miền chưa được cấp phép trong cấu hình Firebase Auth.';
+    } else if (code === 'auth/operation-not-allowed') {
+      friendlyMessage = 'Phương thức đăng nhập Google chưa được kích hoạt.';
+    } else if (error?.message) {
+      friendlyMessage = `Lỗi: ${error.message}`;
+    }
+
+    return { success: false, error: friendlyMessage, errorCode: code };
   }
 }
 
@@ -142,7 +181,7 @@ export async function savePuzzleCompletionScore(data: {
   completionTime: number;
   stars: number;
 }): Promise<void> {
-  if (!auth.currentUser) return;
+  if (!auth.currentUser || auth.currentUser.isAnonymous) return;
   const path = `users/${auth.currentUser.uid}/scores`;
   try {
     const scoresCol = collection(db, path);
@@ -168,7 +207,7 @@ export async function saveCustomPuzzleToFirebase(puzzle: {
   category: string;
   pieceCount: number;
 }): Promise<void> {
-  if (!auth.currentUser) return;
+  if (!auth.currentUser || auth.currentUser.isAnonymous) return;
   const path = `puzzles/${puzzle.id}`;
   try {
     await setDoc(doc(db, 'puzzles', puzzle.id), {
