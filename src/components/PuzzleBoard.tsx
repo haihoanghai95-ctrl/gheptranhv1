@@ -389,8 +389,15 @@ export const PuzzleBoard: React.FC<PuzzleBoardProps> = ({
               src={image.src}
               alt={image.title}
               referrerPolicy="no-referrer"
+              crossOrigin="anonymous"
               className="absolute inset-0 w-full h-full object-cover transition-opacity duration-300 pointer-events-none select-none"
               style={{ opacity: isCompleted ? 0 : ghostOpacity }}
+              onError={(e) => {
+                const target = e.currentTarget;
+                if (!target.src.includes('/api/proxy-image') && image.src.startsWith('http')) {
+                  target.src = `/api/proxy-image?url=${encodeURIComponent(image.src)}`;
+                }
+              }}
             />
 
             {/* When completed: full seamless animated image reveal with light shimmer */}
@@ -400,7 +407,14 @@ export const PuzzleBoard: React.FC<PuzzleBoardProps> = ({
                   src={image.src}
                   alt={image.title}
                   referrerPolicy="no-referrer"
+                  crossOrigin="anonymous"
                   className="w-full h-full object-cover animate-in fade-in duration-700"
+                  onError={(e) => {
+                    const target = e.currentTarget;
+                    if (!target.src.includes('/api/proxy-image') && image.src.startsWith('http')) {
+                      target.src = `/api/proxy-image?url=${encodeURIComponent(image.src)}`;
+                    }
+                  }}
                 />
 
                 {/* Radiant light beam sweeping across picture */}
@@ -475,6 +489,8 @@ export const PuzzleBoard: React.FC<PuzzleBoardProps> = ({
                       <g clipPath={`url(#clip-board-${p.id})`}>
                         <image
                           href={image.src}
+                          xlinkHref={image.src}
+                          crossOrigin="anonymous"
                           x={-p.targetX}
                           y={-p.targetY}
                           width={BOARD_WIDTH}
@@ -626,6 +642,8 @@ export const PuzzleBoard: React.FC<PuzzleBoardProps> = ({
                         <g clipPath={`url(#clip-tray-${p.id})`}>
                           <image
                             href={image.src}
+                            xlinkHref={image.src}
+                            crossOrigin="anonymous"
                             x={-p.targetX}
                             y={-p.targetY}
                             width={BOARD_WIDTH}

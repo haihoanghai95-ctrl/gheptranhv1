@@ -3,6 +3,7 @@ import {
   getAuth,
   GoogleAuthProvider,
   signInWithPopup,
+  signInAnonymously,
   signOut,
   onAuthStateChanged,
   User,
@@ -15,6 +16,7 @@ import {
   addDoc,
   getDocs,
   setDoc,
+  deleteDoc,
   query,
   orderBy,
   limit,
@@ -26,6 +28,15 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId); /* CRITICAL: The app will break without this line */
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
+
+// Attempt silent anonymous auth if not signed in, so guest toddlers can save puzzles to cloud
+onAuthStateChanged(auth, (user) => {
+  if (!user) {
+    signInAnonymously(auth).catch(() => {
+      // Anonymous auth disabled or offline; app uses local storage seamlessly
+    });
+  }
+});
 
 export enum OperationType {
   CREATE = 'create',
@@ -182,3 +193,15 @@ export async function loadCloudPuzzles(): Promise<any[]> {
     return [];
   }
 }
+
+// Delete custom puzzle from Firestore
+export async function deleteCustomPuzzleFromFirebase(puzzleId: string): Promise<void> {
+  if (!auth.currentUser) return;
+  const path = `puzzles/${puzzleId}`;
+  try {
+    await deleteDoc(doc(db, 'puzzles', puzzleId));
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, path);
+  }
+}
+

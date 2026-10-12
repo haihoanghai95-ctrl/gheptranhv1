@@ -10,12 +10,18 @@ import { PRESET_IMAGES } from './data/presetImages';
 import { PieceCount, PuzzleImage, PuzzleSettings } from './types';
 import { audioManager } from './utils/audio';
 import {
+  savePuzzleLocally,
+  loadLocalPuzzles,
+  deletePuzzleLocally,
+} from './utils/puzzleStorage';
+import {
   auth,
   loginWithGoogle,
   logoutFirebase,
   saveCustomPuzzleToFirebase,
   savePuzzleCompletionScore,
   loadCloudPuzzles,
+  deleteCustomPuzzleFromFirebase,
 } from './firebase';
 
 export default function App() {
@@ -38,13 +44,24 @@ export default function App() {
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [user, setUser] = useState<User | null>(null);
 
-  // Auth state listener & Cloud puzzles sync
+  // Auth state listener & Auto-load both Local and Cloud custom puzzles
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
     });
 
-    // Load any shared/cloud puzzles from Firestore
+    // 1. Load locally stored custom puzzles (Guarantees permanence even without internet or login)
+    loadLocalPuzzles().then((localPuzzles) => {
+      if (localPuzzles && localPuzzles.length > 0) {
+        setImages((prev) => {
+          const existingIds = new Set(prev.map((p) => p.id));
+          const newOnes = localPuzzles.filter((p) => !existingIds.has(p.id));
+          return [...newOnes, ...prev];
+        });
+      }
+    });
+
+    // 2. Load any shared/cloud puzzles from Firestore
     loadCloudPuzzles().then((cloudPuzzles) => {
       if (cloudPuzzles && cloudPuzzles.length > 0) {
         const mapped: PuzzleImage[] = cloudPuzzles.map((cp) => ({
@@ -72,6 +89,25 @@ export default function App() {
     audioManager.setSoundEnabled(next);
   };
 
+  // Helper to permanently save custom puzzles locally and to Firebase
+  const persistCustomPuzzle = async (image: PuzzleImage, pieceCount: number = 2) => {
+    if (!image.isCustom) return;
+
+    // Save to browser IndexedDB + LocalStorage
+    await savePuzzleLocally(image);
+
+    // Save to Firebase Firestore
+    saveCustomPuzzleToFirebase({
+      id: image.id,
+      title: image.title,
+      src: image.src,
+      category: image.category,
+      pieceCount,
+    });
+
+    setImages((prev) => [image, ...prev.filter((p) => p.id !== image.id)]);
+  };
+
   const handleStartPuzzle = (image: PuzzleImage, settings: PuzzleSettings) => {
     setActiveImage(image);
     setActiveSettings(settings);
@@ -79,15 +115,8 @@ export default function App() {
     setShowCreateModal(false);
     setShowGoogleSearchModal(false);
 
-    // Save custom puzzle to Firestore if user created it
     if (image.isCustom) {
-      saveCustomPuzzleToFirebase({
-        id: image.id,
-        title: image.title,
-        src: image.src,
-        category: image.category,
-        pieceCount: settings.pieceCount,
-      });
+      persistCustomPuzzle(image, settings.pieceCount);
     }
   };
 
@@ -96,15 +125,14 @@ export default function App() {
     setShowCreateModal(true);
   };
 
-  const handleSelectGoogleImage = (image: PuzzleImage) => {
-    setImages((prev) => [image, ...prev]);
+  const handleSelectGoogleImage = async (image: PuzzleImage) => {
+    await persistCustomPuzzle(image, 2);
     setShowGoogleSearchModal(false);
-    // Open create puzzle modal with the chosen image
     setCustomizingImage(image);
     setShowCreateModal(true);
   };
 
-  const handleUseDrawing = (dataUrl: string, title: string) => {
+  const handleUseDrawing = async (dataUrl: string, title: string) => {
     const newImage: PuzzleImage = {
       id: `drawing-${Date.now()}`,
       title,
@@ -113,16 +141,8 @@ export default function App() {
       src: dataUrl,
       isCustom: true,
     };
-    setImages((prev) => [newImage, ...prev]);
 
-    // Save to Firestore
-    saveCustomPuzzleToFirebase({
-      id: newImage.id,
-      title: newImage.title,
-      src: newImage.src,
-      category: 'custom',
-      pieceCount: 2,
-    });
+    await persistCustomPuzzle(newImage, 2);
 
     // Automatically start puzzle with this drawing
     handleStartPuzzle(newImage, {
@@ -134,6 +154,12 @@ export default function App() {
       soundEnabled,
       splitOrientation: 'horizontal',
     });
+  };
+
+  const handleDeleteCustomPuzzle = async (puzzleId: string) => {
+    await deletePuzzleLocally(puzzleId);
+    deleteCustomPuzzleFromFirebase(puzzleId);
+    setImages((prev) => prev.filter((p) => p.id !== puzzleId));
   };
 
   const handleNextDifficulty = () => {
@@ -203,6 +229,7 @@ export default function App() {
               setShowCreateModal(true);
             }}
             onOpenGoogleSearch={() => setShowGoogleSearchModal(true)}
+            onDeletePuzzle={handleDeleteCustomPuzzle}
           />
         )}
 
@@ -300,6 +327,7 @@ export default function App() {
         <CreatePuzzleModal
           initialImage={customizingImage}
           onStartPuzzle={handleStartPuzzle}
+          onSaveCustomImage={persistCustomPuzzle}
           onOpenDrawingPad={() => {
             setShowCreateModal(false);
             setCurrentView('drawing');

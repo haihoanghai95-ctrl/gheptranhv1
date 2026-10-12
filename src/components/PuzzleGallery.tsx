@@ -6,7 +6,8 @@ import {
   Settings2,
   Sparkles,
   HelpCircle,
-  Search
+  Search,
+  Trash2
 } from 'lucide-react';
 import { Category, PieceCount, PuzzleImage, PuzzleSettings } from '../types';
 import { audioManager } from '../utils/audio';
@@ -18,6 +19,7 @@ interface PuzzleGalleryProps {
   onOpenDrawingPad: () => void;
   onOpenUploadModal: () => void;
   onOpenGoogleSearch?: () => void;
+  onDeletePuzzle?: (puzzleId: string) => void;
 }
 
 export const PuzzleGallery: React.FC<PuzzleGalleryProps> = ({
@@ -27,6 +29,7 @@ export const PuzzleGallery: React.FC<PuzzleGalleryProps> = ({
   onOpenDrawingPad,
   onOpenUploadModal,
   onOpenGoogleSearch,
+  onDeletePuzzle,
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<Category>('all');
   const [selectedQuickPieces, setSelectedQuickPieces] = useState<PieceCount>(2);
@@ -193,7 +196,14 @@ export const PuzzleGallery: React.FC<PuzzleGalleryProps> = ({
                 src={image.src}
                 alt={image.title}
                 referrerPolicy="no-referrer"
+                crossOrigin="anonymous"
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  if (!target.src.includes('/api/proxy-image') && image.src.startsWith('http')) {
+                    target.src = `/api/proxy-image?url=${encodeURIComponent(image.src)}`;
+                  }
+                }}
               />
 
               {/* Play Badge Overlay */}
@@ -203,10 +213,16 @@ export const PuzzleGallery: React.FC<PuzzleGalleryProps> = ({
                 </div>
               </div>
 
-              {/* Piece count pill */}
+              {/* Piece count pill & Saved badge */}
               <div className="absolute top-2.5 left-2.5 bg-amber-500 text-white text-[11px] font-black px-2.5 py-1 rounded-full shadow-md">
                 {selectedQuickPieces} Mảnh Ghép
               </div>
+
+              {image.isCustom && (
+                <div className="absolute top-2.5 right-2.5 bg-emerald-600/90 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-md backdrop-blur-xs flex items-center gap-1">
+                  <span>💾 Đã lưu</span>
+                </div>
+              )}
             </div>
 
             {/* Title & Actions */}
@@ -223,7 +239,7 @@ export const PuzzleGallery: React.FC<PuzzleGalleryProps> = ({
                   ? 'Thế giới khủng long'
                   : image.category === 'fruits'
                   ? 'Hoa quả ngọt ngào'
-                  : 'Tranh tự tạo'}
+                  : 'Tranh tự tạo của bé'}
               </p>
 
               {/* Action Buttons */}
@@ -246,11 +262,52 @@ export const PuzzleGallery: React.FC<PuzzleGalleryProps> = ({
                 >
                   <Settings2 className="w-4 h-4" />
                 </button>
+
+                {image.isCustom && onDeletePuzzle && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (window.confirm('Bé hoặc bố mẹ có muốn xóa bức tranh này khỏi danh sách đã lưu không?')) {
+                        audioManager.playPop();
+                        onDeletePuzzle(image.id);
+                      }
+                    }}
+                    className="p-2.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl transition-colors cursor-pointer"
+                    title="Xóa bức tranh này"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             </div>
           </div>
         ))}
       </div>
+
+      {/* Empty State for Custom Category */}
+      {filteredImages.length === 0 && selectedCategory === 'custom' && (
+        <div className="p-8 sm:p-12 text-center bg-white rounded-3xl border-2 border-amber-200 shadow-sm max-w-lg mx-auto space-y-4">
+          <div className="text-5xl">🎨</div>
+          <h3 className="text-lg font-black text-slate-800">Bé chưa có bức tranh tự tải nào!</h3>
+          <p className="text-xs sm:text-sm text-slate-600 font-medium">
+            Mọi bức tranh chụp từ camera, tải từ máy tính/điện thoại hoặc do bé tự vẽ sẽ được tự động lưu vĩnh viễn ở đây.
+          </p>
+          <div className="flex flex-wrap justify-center gap-2 pt-2">
+            <button
+              onClick={onOpenUploadModal}
+              className="px-4 py-2.5 bg-amber-500 text-white font-bold rounded-2xl text-xs shadow-md hover:bg-amber-600"
+            >
+              📷 Tải Ảnh Lên Ngay
+            </button>
+            <button
+              onClick={onOpenDrawingPad}
+              className="px-4 py-2.5 bg-pink-500 text-white font-bold rounded-2xl text-xs shadow-md hover:bg-pink-600"
+            >
+              🎨 Bé Tự Vẽ Tranh
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Guide Section for Toddlers and Parents */}
       <div className="bg-amber-50/80 rounded-3xl p-6 border-2 border-amber-200/90 mt-10">

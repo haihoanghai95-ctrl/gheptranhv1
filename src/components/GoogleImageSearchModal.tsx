@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { PuzzleImage } from '../types';
 import { audioManager } from '../utils/audio';
+import { compressImage, urlToDataUrl } from '../utils/puzzleStorage';
 
 interface GoogleImageSearchModalProps {
   onSelectImage: (image: PuzzleImage) => void;
@@ -95,6 +96,7 @@ export const GoogleImageSearchModal: React.FC<GoogleImageSearchModalProps> = ({
   const [query, setQuery] = useState('chú cún con');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const [isPreparing, setIsPreparing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedResult, setSelectedResult] = useState<SearchResult | null>(null);
 
@@ -206,17 +208,39 @@ export const GoogleImageSearchModal: React.FC<GoogleImageSearchModalProps> = ({
     audioManager.playPop();
   };
 
-  const handleQuickPlay = (item: SearchResult) => {
-    audioManager.playFanfare();
-    const newPuzzleImage: PuzzleImage = {
-      id: `web-${Date.now()}`,
-      title: item.title || 'Tranh Tìm Kiếm Web',
-      titleEn: item.title,
-      category: 'custom',
-      src: item.url,
-      isCustom: true,
-    };
-    onSelectImage(newPuzzleImage);
+  // Convert web image into safe, high-speed, local Data URL so SVG & mobile render flawlessly
+  const handleQuickPlay = async (item: SearchResult) => {
+    setIsPreparing(true);
+    audioManager.playPop();
+
+    try {
+      const safeDataUrl = await compressImage(item.url || item.thumbUrl);
+      const newPuzzleImage: PuzzleImage = {
+        id: `web-${Date.now()}`,
+        title: item.title || 'Tranh Tìm Kiếm Web',
+        titleEn: item.title,
+        category: 'custom',
+        src: safeDataUrl || item.thumbUrl || item.url,
+        isCustom: true,
+      };
+      audioManager.playFanfare();
+      onSelectImage(newPuzzleImage);
+    } catch {
+      // Fallback via proxy
+      const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(item.url || item.thumbUrl)}`;
+      const newPuzzleImage: PuzzleImage = {
+        id: `web-${Date.now()}`,
+        title: item.title || 'Tranh Tìm Kiếm Web',
+        titleEn: item.title,
+        category: 'custom',
+        src: proxyUrl,
+        isCustom: true,
+      };
+      audioManager.playFanfare();
+      onSelectImage(newPuzzleImage);
+    } finally {
+      setIsPreparing(false);
+    }
   };
 
   const handleConfirmSelection = () => {
@@ -224,48 +248,80 @@ export const GoogleImageSearchModal: React.FC<GoogleImageSearchModalProps> = ({
     handleQuickPlay(selectedResult);
   };
 
-  const handleConfirmDirectUrl = () => {
+  const handleConfirmDirectUrl = async () => {
     if (!directUrl.trim()) return;
-    audioManager.playFanfare();
+    setIsPreparing(true);
+    audioManager.playPop();
 
-    const newPuzzleImage: PuzzleImage = {
-      id: `direct-${Date.now()}`,
-      title: 'Ảnh Dán Từ Google',
-      titleEn: 'Google Image Link',
-      category: 'custom',
-      src: directUrl.trim(),
-      isCustom: true,
-    };
-
-    onSelectImage(newPuzzleImage);
+    try {
+      const safeDataUrl = await compressImage(directUrl.trim());
+      const newPuzzleImage: PuzzleImage = {
+        id: `direct-${Date.now()}`,
+        title: 'Ảnh Dán Từ Google',
+        titleEn: 'Google Image Link',
+        category: 'custom',
+        src: safeDataUrl || directUrl.trim(),
+        isCustom: true,
+      };
+      audioManager.playFanfare();
+      onSelectImage(newPuzzleImage);
+    } catch {
+      const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(directUrl.trim())}`;
+      const newPuzzleImage: PuzzleImage = {
+        id: `direct-${Date.now()}`,
+        title: 'Ảnh Dán Từ Google',
+        titleEn: 'Google Image Link',
+        category: 'custom',
+        src: proxyUrl,
+        isCustom: true,
+      };
+      audioManager.playFanfare();
+      onSelectImage(newPuzzleImage);
+    } finally {
+      setIsPreparing(false);
+    }
   };
 
   // Upload photo directly from phone library or camera
-  const handlePhoneFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhoneFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const src = event.target?.result as string;
+    setIsPreparing(true);
+    audioManager.playPop();
+
+    try {
+      const compressedDataUrl = await compressImage(file, 1024, 0.85);
       const customImg: PuzzleImage = {
         id: `phone-${Date.now()}`,
         title: file.name.replace(/\.[^/.]+$/, '') || 'Ảnh Từ Điện Thoại',
         titleEn: 'Phone Photo',
         category: 'custom',
-        src,
+        src: compressedDataUrl,
         isCustom: true,
       };
       audioManager.playFanfare();
       onSelectImage(customImg);
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      alert('Không thể đọc file ảnh này. Bé thử chọn ảnh khác nhé!');
+    } finally {
+      setIsPreparing(false);
+    }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm sm:p-4">
       {/* Container: Full screen on mobile, comfortable modal on desktop */}
-      <div className="bg-white w-full h-full sm:h-auto sm:max-h-[92vh] sm:max-w-4xl sm:rounded-3xl sm:border-4 sm:border-amber-300 sm:shadow-2xl flex flex-col overflow-hidden">
+      <div className="bg-white w-full h-full sm:h-auto sm:max-h-[92vh] sm:max-w-4xl sm:rounded-3xl sm:border-4 sm:border-amber-300 sm:shadow-2xl flex flex-col overflow-hidden relative">
+        {/* Loading overlay when preparing image */}
+        {isPreparing && (
+          <div className="absolute inset-0 bg-slate-900/70 backdrop-blur-xs z-50 flex flex-col items-center justify-center text-white gap-3 p-4 text-center">
+            <Loader2 className="w-12 h-12 animate-spin text-amber-400" />
+            <p className="text-base sm:text-lg font-black">Đang tải và chuẩn bị bức tranh cho bé... 🧩</p>
+            <p className="text-xs sm:text-sm text-amber-200 font-semibold">Tự động tối ưu độ nét để bé chơi thật vui</p>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex items-center justify-between p-3.5 sm:p-5 border-b border-amber-100 bg-amber-50/50 shrink-0">
           <div className="flex items-center gap-2.5">
@@ -445,10 +501,16 @@ export const GoogleImageSearchModal: React.FC<GoogleImageSearchModalProps> = ({
                       src={res.thumbUrl}
                       alt={res.title}
                       referrerPolicy="no-referrer"
+                      crossOrigin="anonymous"
                       loading="lazy"
                       className="w-full h-full object-cover"
                       onError={(e) => {
-                        (e.target as HTMLElement).style.display = 'none';
+                        const target = e.currentTarget;
+                        if (!target.src.includes('/api/proxy-image') && res.url) {
+                          target.src = `/api/proxy-image?url=${encodeURIComponent(res.url)}`;
+                        } else {
+                          target.style.opacity = '0.3';
+                        }
                       }}
                     />
 

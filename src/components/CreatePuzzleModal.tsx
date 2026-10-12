@@ -14,11 +14,13 @@ import {
 import { CutStyle, PieceCount, PuzzleImage, PuzzleSettings } from '../types';
 import { PRESET_IMAGES } from '../data/presetImages';
 import { audioManager } from '../utils/audio';
+import { compressImage } from '../utils/puzzleStorage';
 
 interface CreatePuzzleModalProps {
   onStartPuzzle: (image: PuzzleImage, settings: PuzzleSettings) => void;
   onOpenDrawingPad: () => void;
   onOpenGoogleSearch?: () => void;
+  onSaveCustomImage?: (image: PuzzleImage) => void;
   onClose: () => void;
   initialImage?: PuzzleImage;
 }
@@ -27,6 +29,7 @@ export const CreatePuzzleModal: React.FC<CreatePuzzleModalProps> = ({
   onStartPuzzle,
   onOpenDrawingPad,
   onOpenGoogleSearch,
+  onSaveCustomImage,
   onClose,
   initialImage,
 }) => {
@@ -47,25 +50,28 @@ export const CreatePuzzleModal: React.FC<CreatePuzzleModalProps> = ({
   // File input
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const src = event.target?.result as string;
+    try {
+      const compressedSrc = await compressImage(file, 1024, 0.85);
       const customImg: PuzzleImage = {
         id: `custom-${Date.now()}`,
-        title: file.name.replace(/\.[^/.]+$/, ''),
+        title: file.name.replace(/\.[^/.]+$/, '') || 'Ảnh Của Bé',
         titleEn: 'My Photo',
         category: 'custom',
-        src,
+        src: compressedSrc,
         isCustom: true,
       };
       setSelectedImage(customImg);
+      if (onSaveCustomImage) {
+        onSaveCustomImage(customImg);
+      }
       audioManager.playPop();
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      alert('Không thể đọc ảnh này. Bé thử chọn ảnh khác nhé!');
+    }
   };
 
   const startCamera = async () => {
@@ -116,6 +122,9 @@ export const CreatePuzzleModal: React.FC<CreatePuzzleModalProps> = ({
       isCustom: true,
     };
     setSelectedImage(capturedImg);
+    if (onSaveCustomImage) {
+      onSaveCustomImage(capturedImg);
+    }
     stopCamera();
     audioManager.playFanfare();
   };
@@ -123,6 +132,9 @@ export const CreatePuzzleModal: React.FC<CreatePuzzleModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     audioManager.playSnap();
+    if (selectedImage.isCustom && onSaveCustomImage) {
+      onSaveCustomImage(selectedImage);
+    }
     onStartPuzzle(selectedImage, {
       pieceCount,
       cutStyle,
